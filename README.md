@@ -1,46 +1,67 @@
-# Getting Started with Create React App
+## aws lambda with provided from SAM
+https://aws.amazon.com/ko/blogs/compute/uploading-to-amazon-s3-directly-from-a-web-or-mobile-application/
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+> git clone https://github.com/aws-samples/amazon-s3-presigned-urls-aws-sam
+cd amazon-s3-presigned-urls-aws-sam
+sam deploy --guided
 
-## Available Scripts
+/*
+  Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this
+  software and associated documentation files (the "Software"), to deal in the Software
+  without restriction, including without limitation the rights to use, copy, modify,
+  merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so.
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+  INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+  PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+  HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
 
-In the project directory, you can run:
+'use strict'
 
-### `yarn start`
+const AWS = require('aws-sdk')
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+AWS.config.update({ region: process.env.AWS_REGION })
+const s3 = new AWS.S3()
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+// Change this value to adjust the signed URL's expiration
+const URL_EXPIRATION_SECONDS = 300
 
-### `yarn test`
+// Main Lambda entry point
+exports.handler = async (event, context) => {
+  return await getUploadURL(event, context)
+}
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+const getUploadURL = async function(event, context) {
+  console.log("context: ",context);
+  console.log("event: ", event);
+  const randomID = parseInt(Math.random() * 10000000)
+  // const Key = `${event.key1}.xlsx`
+  const Key = `${event["queryStringParameters"]["fileName"]}.xlsx`
 
-### `yarn build`
+  // Get signed URL from S3
+  const s3Params = {
+    Bucket: process.env.UploadBucket,
+    Key,
+    Expires: URL_EXPIRATION_SECONDS,
+    ContentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    
+    
+    // ContentType:'image/jpeg',
+    // This ACL makes the uploaded object publicly readable. You must also uncomment
+    // the extra permission for the Lambda function in the SAM template.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+    ACL: 'public-read'
+  }
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+  console.log('Params: ', s3Params)
+  const uploadURL = await s3.getSignedUrlPromise('putObject', s3Params)
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `yarn eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
-
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
-
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+  return JSON.stringify({
+    uploadURL: uploadURL,
+    log: context
+  })
+}
